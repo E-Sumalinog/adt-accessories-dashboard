@@ -298,14 +298,19 @@ export const getCSSVariables = (theme: Theme): Record<string, string> => {
     vars[`--color-secondary-${key}`] = value
   })
   
-  // Semantic colors
   Object.entries(theme.semantic).forEach(([key, value]) => {
-    if (typeof value === 'object') {
-      Object.entries(value).forEach(([subKey, subValue]) => {
-        vars[`--color-${key}-${subKey}`] = subValue
+    if (typeof value === 'object' && value !== null) {
+      Object.entries(value as Record<string, any>).forEach(([subKey, subValue]) => {
+        if (typeof subValue === 'object' && subValue !== null) {
+          Object.entries(subValue).forEach(([nestedKey, nestedValue]) => {
+            vars[`--color-${key}-${subKey}-${nestedKey}`] = nestedValue as string
+          })
+        } else {
+          vars[`--color-${key}-${subKey}`] = subValue as string
+        }
       })
     } else {
-      vars[`--color-${key}`] = value
+      vars[`--color-${key}`] = value as string
     }
   })
   
