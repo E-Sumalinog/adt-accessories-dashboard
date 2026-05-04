@@ -156,7 +156,7 @@ export default function SettingsPage() {
 
 function GeneralSettings() {
   const [settings, setSettings] = useState({
-    companyName: 'OrderFlow Pro',
+    companyName: 'ADT Accessories',
     companyEmail: 'info@orderflow.com',
     companyPhone: '+63 2 8123 4567',
     companyAddress: 'Makati City, Metro Manila, Philippines',
