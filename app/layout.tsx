@@ -8,7 +8,7 @@ import { ThemeProvider } from '@/components/ThemeProvider'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'OrderFlow Pro',
+  title: 'ADT Accessories',
   description: 'Professional order management system for businesses',
 }
 
