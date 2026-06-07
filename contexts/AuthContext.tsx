@@ -1,12 +1,20 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from 'react'
+
 import { useRouter } from 'next/navigation'
 
 interface User {
+  id: number
   name: string
   email: string
-  avatar: string
+  role: string
 }
 
 interface AuthContextType {
@@ -17,55 +25,82 @@ interface AuthContextType {
   loading: boolean
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const AuthContext = createContext<AuthContextType | undefined>(
+  undefined
+)
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({
+  children,
+}: {
+  children: ReactNode
+}) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+
   const router = useRouter()
 
   useEffect(() => {
-    // Check authentication status on mount
-    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true'
+    const token = localStorage.getItem('token')
     const userData = localStorage.getItem('user')
 
-    if (isAuthenticated && userData) {
+    if (token && userData) {
       try {
         setUser(JSON.parse(userData))
       } catch (error) {
-        console.error('Error parsing user data:', error)
-        localStorage.removeItem('isAuthenticated')
+        console.error(error)
+
+        localStorage.removeItem('token')
         localStorage.removeItem('user')
       }
     }
+
     setLoading(false)
   }, [])
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    // Simulate API call
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        if (email === 'admin@adtaccessories.com' && password === 'admin123') {
-          const userData: User = {
-            name: 'Admin User',
-            email: 'admin@adtaccessories.com',
-            avatar: 'AD'
-          }
-          setUser(userData)
-          localStorage.setItem('isAuthenticated', 'true')
-          localStorage.setItem('user', JSON.stringify(userData))
-          resolve(true)
-        } else {
-          resolve(false)
-        }
-      }, 1000)
-    })
+  const login = async (
+    email: string,
+    password: string
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        return false
+      }
+
+      localStorage.setItem('token', data.token)
+
+      localStorage.setItem(
+        'user',
+        JSON.stringify(data.user)
+      )
+
+      setUser(data.user)
+
+      return true
+    } catch (error) {
+      console.error(error)
+      return false
+    }
   }
 
   const logout = () => {
     setUser(null)
-    localStorage.removeItem('isAuthenticated')
+
+    localStorage.removeItem('token')
     localStorage.removeItem('user')
+
     router.push('/login')
   }
 
@@ -74,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!user,
     login,
     logout,
-    loading
+    loading,
   }
 
   return (
@@ -86,8 +121,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext)
+
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
+    throw new Error(
+      'useAuth must be used within an AuthProvider'
+    )
   }
+
   return context
 }

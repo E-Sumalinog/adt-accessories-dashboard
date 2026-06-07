@@ -17,7 +17,8 @@ import {
   Clock,
   Star
 } from 'lucide-react'
-import { orderService, customerService, productService, statsService, Order, Product } from '@/lib/dataStore'
+import { Order, Product } from '@/lib/type'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface DashboardStats {
   totalRevenue: number
@@ -34,86 +35,94 @@ interface TopProduct extends Product {
 
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [stats, setStats] = useState<DashboardStats>({
-    totalRevenue: 0,
+  const [stats, setStats] = useState({
+  revenue: 0,
+  totalOrders: 0,
+  activeProducts: 0,
+  totalCustomers: 0,
+
+  pending: 0,
+  processing: 0,
+  shipped: 0,
+  delivered: 0,
+  cancelled: 0,
+  })
+
+  const [previousStats, setPreviousStats] = useState({
+    revenue: 0,
     totalOrders: 0,
     activeProducts: 0,
-    totalCustomers: 0
+    totalCustomers: 0,
   })
-  const [previousStats, setPreviousStats] = useState<DashboardStats>({
-    totalRevenue: 0,
-    totalOrders: 0,
-    activeProducts: 0,
-    totalCustomers: 0
-  })
+
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
 
-  // Load real data on component mount
-  useEffect(() => {
-    loadDashboardData()
-  }, [])
+  const loadDashboardData = async () => {
+    try {
+      const res = await fetch("/api/dashboard");
 
-  const loadDashboardData = () => {
-    // Get real statistics
-    const orderStats = statsService.getOrderStats()
-    const customerStats = statsService.getCustomerStats()
-    const productStats = statsService.getProductStats()
-    
-    // Calculate new stats
-    const newStats = {
-      totalRevenue: orderStats.totalRevenue,
-      totalOrders: orderStats.total,
-      activeProducts: productStats.active,
-      totalCustomers: customerStats.total
-    }
-    
-    // Update stats
-    setStats(newStats)
-    
-    // Calculate change percentages (simulate previous month data)
-    const simulatedPreviousStats = {
-      totalRevenue: newStats.totalRevenue * 0.88, // 12% growth
-      totalOrders: Math.max(1, Math.floor(newStats.totalOrders * 0.92)), // 8% growth
-      activeProducts: Math.max(1, newStats.activeProducts - 2), // 2 new products
-      totalCustomers: Math.max(1, Math.floor(newStats.totalCustomers * 0.93)) // 7% growth
-    }
-    setPreviousStats(simulatedPreviousStats)
+      const data = await res.json();
 
-    // Get recent orders (last 4)
-    const allOrders = orderService.getAllOrders()
-    const sortedOrders = allOrders
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 4)
-    setRecentOrders(sortedOrders)
+      if (!data.success) return;
 
-    // Get top products (by sales)
-    const allProducts = productService.getAllProducts()
-    const productsWithSales = allProducts.map(product => {
-      const relatedOrders = allOrders.filter(order => 
-        order.items.some(item => item.productId === product.id)
-      )
-      const totalSales = relatedOrders.reduce((sum, order) => {
-        const orderItems = order.items.filter(item => item.productId === product.id)
-        return sum + orderItems.reduce((itemSum, item) => itemSum + item.quantity, 0)
-      }, 0)
-      const totalRevenue = relatedOrders.reduce((sum, order) => {
-        const orderItems = order.items.filter(item => item.productId === product.id)
-        return sum + orderItems.reduce((itemSum, item) => itemSum + item.totalPrice, 0)
-      }, 0)
-      
-      return {
+      setStats(data.stats);
+      console.log("LOAD DASHBOARD:", data.stats)
+
+      // Fake previous stats for growth %
+      setPreviousStats({
+        revenue: data.stats.totalRevenue * 0.88,
+        totalOrders: Math.max(1, Math.floor(data.stats.totalOrders * 0.92)),
+        activeProducts: Math.max(1, data.stats.activeProducts - 2),
+        totalCustomers: Math.max(1, Math.floor(data.stats.totalCustomers * 0.93)),
+      });
+
+      setRecentOrders(data.recentOrders);
+
+      const formattedTopProducts = data.topProducts.map((product: any) => ({
         ...product,
-        totalSales,
-        totalRevenue,
-        rating: 4.5 + Math.random() * 0.5 // Simulated rating
+        totalSales: Number(product.total_sales),
+        totalRevenue: Number(product.total_revenue),
+        rating: 4.5 + Math.random() * 0.5,
+      }));
+
+      setTopProducts(formattedTopProducts);
+
+    } catch (error) {
+      console.error("Dashboard fetch error:", error);
+    }
+  };
+
+  const fetchDashboardStats = async () => {
+    try {
+      const res = await fetch('/api/dashboard/stats')
+
+      if (!res.ok) {
+        throw new Error('Failed to fetch dashboard stats')
       }
-    })
-    .filter(product => product.totalSales > 0)
-    .sort((a, b) => b.totalRevenue - a.totalRevenue)
-    .slice(0, 4)
-    
-    setTopProducts(productsWithSales)
+
+      const data = await res.json()
+
+      console.log("DASHBOARD STATS:", data)
+
+      setStats({
+        revenue: data.revenue || 0,
+        totalOrders: data.totalOrders || 0,
+
+        // temporary placeholders
+        activeProducts: 0,
+        totalCustomers: 0,
+
+        pending: data.pending || 0,
+        processing: data.processing || 0,
+        shipped: data.shipped || 0,
+        delivered: data.delivered || 0,
+        cancelled: data.cancelled || 0,
+      })
+
+    } catch (error) {
+      console.error(error)
+    }
   }
 
   const calculateChange = (current: number, previous: number) => {
@@ -139,16 +148,29 @@ export default function Dashboard() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: 'PHP',
-      minimumFractionDigits: 0
-    }).format(amount)
-  }
+  console.log("FORMAT AMOUNT:", amount, typeof amount)
+
+  return new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 0
+  }).format(amount)
+}
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('en-PH').format(num)
   }
+
+  const { user } = useAuth()
+
+  useEffect(() => {
+    fetchDashboardStats()
+  }, [])
+
+    // Load real data on component mount
+  useEffect(() => {
+    loadDashboardData()
+  }, [])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -178,61 +200,117 @@ export default function Dashboard() {
         <main className="p-6">
           {/* Welcome Section */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to ADT ACCESSORIES</h1>
-            <p className="text-gray-600">Professional Accessories Management Dashboard</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Welcome, {user?.name || 'Admin'}
+          </h1>
+            <p className="text-gray-600">{user?.email ? `Logged in as ${user.email}` : 'Professional Accessories Management Dashboard'}</p>
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(stats.totalRevenue)}</p>
-                  <p className="text-sm text-green-600 mt-1">{calculateChange(stats.totalRevenue, previousStats.totalRevenue)}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-green-50">
-                  <DollarSign className="w-6 h-6 text-green-600" />
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+
+          {/* Revenue */}
+          <div className="card p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">
+                  Total Revenue
+                </p>
+
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {formatCurrency(stats.revenue)}
+                </p>
+
+                <p className="text-sm text-green-600 mt-1">
+                  {calculateChange(stats.revenue, previousStats.revenue)}
+                </p>
               </div>
-            </div>
-            <div className="card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Orders</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{formatNumber(stats.totalOrders)}</p>
-                  <p className="text-sm text-green-600 mt-1">{calculateChange(stats.totalOrders, previousStats.totalOrders)}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-blue-50">
-                  <ShoppingCart className="w-6 h-6 text-blue-600" />
-                </div>
-              </div>
-            </div>
-            <div className="card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Active Products</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{formatNumber(stats.activeProducts)}</p>
-                  <p className="text-sm text-green-600 mt-1">{calculateNewItems(stats.activeProducts, previousStats.activeProducts)}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-red-50">
-                  <Package className="w-6 h-6 text-red-600" />
-                </div>
-              </div>
-            </div>
-            <div className="card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Customers</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{formatNumber(stats.totalCustomers)}</p>
-                  <p className="text-sm text-green-600 mt-1">{calculateChange(stats.totalCustomers, previousStats.totalCustomers)}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-purple-50">
-                  <Users className="w-6 h-6 text-purple-600" />
-                </div>
+
+              <div className="p-3 rounded-lg bg-green-50">
+                <DollarSign className="w-6 h-6 text-green-600" />
               </div>
             </div>
           </div>
+
+          {/* Orders */}
+          <div className="card p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">
+                  Total Orders
+                </p>
+
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {formatNumber(stats.totalOrders)}
+                </p>
+
+                <p className="text-sm text-green-600 mt-1">
+                  {calculateChange(
+                    stats.totalOrders,
+                    previousStats.totalOrders
+                  )}
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-blue-50">
+                <ShoppingCart className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </div>
+
+          {/* Products */}
+          <div className="card p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">
+                  Active Products
+                </p>
+
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {formatNumber(stats.activeProducts)}
+                </p>
+
+                <p className="text-sm text-green-600 mt-1">
+                  {calculateNewItems(
+                    stats.activeProducts,
+                    previousStats.activeProducts
+                  )}
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-red-50">
+                <Package className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+          </div>
+
+          {/* Customers */}
+          <div className="card p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">
+                  Total Customers
+                </p>
+
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {formatNumber(stats.totalCustomers)}
+                </p>
+
+                <p className="text-sm text-green-600 mt-1">
+                  {calculateChange(
+                    stats.totalCustomers,
+                    previousStats.totalCustomers
+                  )}
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-purple-50">
+                <Users className="w-6 h-6 text-purple-600" />
+              </div>
+            </div>
+          </div>
+
+        </div>
 
           {/* Content Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -259,7 +337,7 @@ export default function Dashboard() {
                             </div>
                           </div>
                           <div className="mt-1">
-                            <p className="text-sm text-gray-500">{order.items[0]?.productName || 'Multiple items'}</p>
+                            <p className="text-sm text-gray-500">{order.items?.[0]?.productName || 'Multiple items'}</p>
                           </div>
                         </div>
                         <div className="text-right">

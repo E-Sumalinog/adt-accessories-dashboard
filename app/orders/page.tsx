@@ -23,7 +23,7 @@ import {
   Download,
   RefreshCw
 } from 'lucide-react'
-import { orderService, customerService, productService, Order, OrderItem } from '@/lib/dataStore'
+import type { Order, OrderItem } from '@/lib/type'
 
 const statusColors = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -64,11 +64,29 @@ export default function OrdersPage() {
     loadOrders()
   }, [])
 
-  const loadOrders = () => {
-    const allOrders = orderService.getAllOrders()
-    setOrders(allOrders)
-    updateStats(allOrders)
+const loadOrders = async () => {
+  try {
+    const res = await fetch('/api/orders')
+
+    if (!res.ok) {
+      const errorText = await res.text()
+      console.error("API ERROR:", errorText)
+      setOrders([])
+      return
+    }
+
+    const text = await res.text()
+
+    const data = text ? JSON.parse(text) : []
+
+    setOrders(data)
+    updateStats(data)
+
+  } catch (err) {
+    console.error("FETCH FAILED:", err)
+    setOrders([])
   }
+}
 
   const updateStats = (allOrders: Order[]) => {
     setOrderStats({
@@ -78,60 +96,130 @@ export default function OrdersPage() {
       shipped: allOrders.filter(order => order.status === 'shipped').length,
       delivered: allOrders.filter(order => order.status === 'delivered').length,
       cancelled: allOrders.filter(order => order.status === 'cancelled').length,
-      totalRevenue: allOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+      totalRevenue: allOrders.reduce((sum, order) => {
+  return sum + Number(order.totalAmount ?? 0)
+}, 0)
     })
   }
 
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         order.customerEmail.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = selectedStatus === 'all' || order.status === selectedStatus
-    return matchesSearch && matchesStatus
-  })
+ const filteredOrders = orders.filter(order => {
+  const orderNumber = order.orderNumber ?? ''
+  const customerName = order.customerName ?? ''
+  const customerEmail = order.customerEmail ?? ''
+  const search = searchQuery.toLowerCase()
+
+  const matchesSearch =
+    orderNumber.toLowerCase().includes(search) ||
+    customerName.toLowerCase().includes(search) ||
+    customerEmail.toLowerCase().includes(search)
+
+  const matchesStatus =
+    selectedStatus === 'all' || order.status === selectedStatus
+
+  return matchesSearch && matchesStatus
+})
 
   const getStatusColor = (status: string) => statusColors[status as keyof typeof statusColors]
   const getStatusIcon = (status: string) => statusIcons[status as keyof typeof statusIcons]
 
   const handleViewOrder = (order: Order) => {
+    console.log("VIEW CLICKED", order)
     setSelectedOrder(order)
     setShowOrderDetails(true)
   }
 
-  const handleStatusUpdate = (orderId: string, newStatus: Order['status']) => {
-    const updatedOrder = orderService.updateOrderStatus(orderId, newStatus)
-    if (updatedOrder) {
-      loadOrders() // Refresh the orders list
+  const handleStatusUpdate = async (
+    orderId: string,
+    newStatus: Order['status']
+  ) => {
+    try {
+      await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      loadOrders()
+    } catch (error) {
+      console.error('Failed to update order status:', error)
     }
   }
 
-  const handleCreateOrder = (orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'>) => {
-    const newOrder = orderService.createOrder(orderData)
-    if (newOrder) {
-      loadOrders() // Refresh the orders list
+  const handleCreateOrder = async (
+    orderData: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'>
+  ) => {
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderData),
+      })
+
+      if (!res.ok) {
+        console.error(await res.text())
+        throw new Error('Failed to create order')
+      }
+
+      await loadOrders()
+
       setShowCreateModal(false)
+
+    } catch (error) {
+      console.error('Failed to create order:', error)
     }
   }
 
-  const handleEditOrder = (orderData: Partial<Order>) => {
-    if (selectedOrder) {
-      const updatedOrder = orderService.updateOrder(selectedOrder.id, orderData)
-      if (updatedOrder) {
-        loadOrders() // Refresh the orders list
-        setShowEditModal(false)
-        setSelectedOrder(null)
-      }
+  const handleEditOrder = async (orderData: Partial<Order>) => {
+    if (!selectedOrder) return
+
+    const res = await fetch(`/api/orders/${selectedOrder.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...orderData,
+        id: selectedOrder.id, // important for safety
+      }),
+    })
+
+    if (!res.ok) {
+      console.error(await res.text())
+      return
     }
+
+    const updated = await res.json()
+
+    loadOrders()
+
+    // 🔥 IMPORTANT FIX
+    setSelectedOrder(updated)
+    setShowEditModal(false)
   }
 
-  const handleDeleteOrder = (orderId: string) => {
-    if (window.confirm('Are you sure you want to delete this order? This action cannot be undone.')) {
-      const deleted = orderService.deleteOrder(orderId)
-      if (deleted) {
-        loadOrders() // Refresh the orders list
-        setShowOrderDetails(false)
-        setSelectedOrder(null)
-      }
+  const handleDeleteOrder = async (orderId: string) => {
+    const confirmDelete = window.confirm(
+      'Are you sure you want to delete this order? This action cannot be undone.'
+    )
+
+    if (!confirmDelete) return
+
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'DELETE',
+      })
+
+      if (!res.ok) throw new Error('Failed to delete order')
+
+      loadOrders()
+      setShowOrderDetails(false)
+      setSelectedOrder(null)
+    } catch (error) {
+      console.error('Failed to delete order:', error)
     }
   }
 
@@ -250,7 +338,11 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Revenue</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">₱{orderStats.totalRevenue.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    ₱{Number(orderStats.totalRevenue ?? 0)
+                      .toFixed(0)
+                      .replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+                  </p>
                   <p className="text-xs text-green-600 mt-1">From all orders</p>
                 </div>
                 <div className="p-3 rounded-lg bg-green-50">
@@ -366,43 +458,69 @@ export default function OrdersPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredOrders.map((order) => {
-                    const StatusIcon = getStatusIcon(order.status)
+                  {filteredOrders?.filter(Boolean).map((order) => {
+                    const rawStatus = (order?.status ?? 'pending').toLowerCase().trim()
+
+                    const StatusIcon =
+                      statusIcons[rawStatus as keyof typeof statusIcons] ?? Clock
+
+                    const totalAmount = Number(order?.totalAmount ?? 0)
+                    const itemsCount = Array.isArray(order?.items) ? order.items.length : 0
+
                     return (
-                      <tr key={order.id} className="hover:bg-gray-50">
+                      <tr key={order?.id} className="hover:bg-gray-50">
+
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{order.orderNumber}</div>
-                          <div className="text-sm text-gray-500">{order.items.length} items</div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {order?.orderNumber ?? 'N/A'}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {itemsCount} items
+                          </div>
                         </td>
+
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{order.customerName}</div>
-                          <div className="text-sm text-gray-500">{order.customerEmail}</div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {order?.customerName ?? 'Unknown'}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {order?.customerEmail ?? '-'}
+                          </div>
                         </td>
+
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(rawStatus)}`}>
                             <StatusIcon className="w-3 h-3 mr-1" />
-                            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                            {rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1)}
                           </span>
                         </td>
+
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">₱{order.totalAmount.toFixed(2)}</div>
-                          <div className="text-sm text-gray-500">{order.paymentMethod}</div>
+                          <div className="text-sm font-medium text-gray-900">
+                            ₱{totalAmount.toFixed(2)}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {order?.paymentMethod ?? 'N/A'}
+                          </div>
                         </td>
+
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{order.orderDate}</div>
-                          {order.deliveryDate && (
-                            <div className="text-sm text-gray-500">Est. {order.deliveryDate}</div>
-                          )}
+                          <div className="text-sm text-gray-900">
+                            {order?.orderDate ?? '-'}
+                          </div>
                         </td>
+
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center space-x-2">
+
                             <button
                               onClick={() => handleViewOrder(order)}
                               className="text-primary-600 hover:text-primary-900"
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <button 
+
+                            <button
                               onClick={() => {
                                 setSelectedOrder(order)
                                 setShowEditModal(true)
@@ -411,12 +529,14 @@ export default function OrdersPage() {
                             >
                               <Edit className="w-4 h-4" />
                             </button>
-                            <button 
-                              onClick={() => handleDeleteOrder(order.id)}
+
+                            <button
+                              onClick={() => handleDeleteOrder(order?.id)}
                               className="text-red-600 hover:text-red-900"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
+
                           </div>
                         </td>
                       </tr>
@@ -491,7 +611,7 @@ export default function OrdersPage() {
                     <div className="bg-gray-50 rounded-lg p-4">
                       <div className="flex justify-between mb-2">
                         <span className="text-gray-600">Items ({selectedOrder.items.length})</span>
-                        <span className="text-gray-900">₱{selectedOrder.totalAmount.toFixed(2)}</span>
+                        <span className="text-gray-900">₱{Number(selectedOrder.totalAmount ?? 0).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between mb-2">
                         <span className="text-gray-600">Shipping</span>
@@ -504,7 +624,7 @@ export default function OrdersPage() {
                       <div className="border-t pt-2 mt-2">
                         <div className="flex justify-between">
                           <span className="font-semibold text-gray-900">Total</span>
-                          <span className="font-semibold text-gray-900">₱{selectedOrder.totalAmount.toFixed(2)}</span>
+                          <span className="font-semibold text-gray-900">₱{Number(selectedOrder.totalAmount ?? 0).toFixed(2)}</span>
                         </div>
                       </div>
                     </div>
