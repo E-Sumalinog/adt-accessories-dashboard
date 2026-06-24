@@ -1,14 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Sidebar from '@/components/Sidebar'
 import UserDropdown from '@/components/UserDropdown'
-import { 
-  Settings, 
-  User, 
-  Bell, 
-  Shield, 
-  Database, 
+import {
+  Settings,
+  User,
+  Bell,
+  Shield,
+  Database,
   Globe,
   CreditCard,
   Mail,
@@ -39,17 +39,39 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState('general')
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true)
     setSaveMessage('')
-    
-    // Simulate saving
-    setTimeout(() => {
-      setIsSaving(false)
+
+    try {
+      const generalSettings = document.querySelectorAll('#general-settings input, #general-settings select')
+      const settingsData: any = {}
+      generalSettings.forEach((el) => {
+        const input = el as HTMLInputElement | HTMLSelectElement
+        if (input.id) {
+          settingsData[input.id] = input.value
+        }
+      })
+
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settingsData)
+      })
+
+      if (!res.ok) throw new Error('Failed to save settings')
+
       setSaveMessage('Settings saved successfully!')
       setTimeout(() => setSaveMessage(''), 3000)
-    }, 1500)
+    } catch (error) {
+      console.error('Failed to save settings:', error)
+      setSaveMessage('Failed to save settings')
+      setTimeout(() => setSaveMessage(''), 3000)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const renderSectionContent = () => {
@@ -166,124 +188,167 @@ function GeneralSettings() {
     dateFormat: 'MM/DD/YYYY',
     weekStartsOn: 'monday'
   })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadSettings()
+  }, [])
+
+  const loadSettings = async () => {
+    try {
+      const res = await fetch('/api/settings')
+      if (res.ok) {
+        const data = await res.json()
+        setSettings({
+          companyName: data.company_name || 'ADT Accessories',
+          companyEmail: data.company_email || 'info@orderflow.com',
+          companyPhone: data.company_phone || '+63 2 8123 4567',
+          companyAddress: data.company_address || 'Makati City, Metro Manila, Philippines',
+          timezone: data.timezone || 'Asia/Manila',
+          language: data.language || 'en',
+          currency: data.currency || 'PHP',
+          dateFormat: data.date_format || 'MM/DD/YYYY',
+          weekStartsOn: data.week_starts_on || 'monday'
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" id="general-settings">
       <h2 className="text-xl font-semibold text-gray-900">General Settings</h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Company Name
-          </label>
-          <input
-            type="text"
-            value={settings.companyName}
-            onChange={(e) => setSettings({...settings, companyName: e.target.value})}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Company Email
-          </label>
-          <input
-            type="email"
-            value={settings.companyEmail}
-            onChange={(e) => setSettings({...settings, companyEmail: e.target.value})}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Company Phone
-          </label>
-          <input
-            type="tel"
-            value={settings.companyPhone}
-            onChange={(e) => setSettings({...settings, companyPhone: e.target.value})}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Company Address
-          </label>
-          <input
-            type="text"
-            value={settings.companyAddress}
-            onChange={(e) => setSettings({...settings, companyAddress: e.target.value})}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          />
-        </div>
-      </div>
 
-      <div className="border-t pt-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Regional Settings</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Timezone
-            </label>
-            <select
-              value={settings.timezone}
-              onChange={(e) => setSettings({...settings, timezone: e.target.value})}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            >
-              <option value="Asia/Manila">Asia/Manila (UTC+8)</option>
-              <option value="Asia/Tokyo">Asia/Tokyo (UTC+9)</option>
-              <option value="UTC">UTC (UTC+0)</option>
-            </select>
+      {loading ? (
+        <p className="text-sm text-gray-500">Loading settings...</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Company Name
+              </label>
+              <input
+                id="companyName"
+                type="text"
+                value={settings.companyName}
+                onChange={(e) => setSettings({...settings, companyName: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Company Email
+              </label>
+              <input
+                id="companyEmail"
+                type="email"
+                value={settings.companyEmail}
+                onChange={(e) => setSettings({...settings, companyEmail: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Company Phone
+              </label>
+              <input
+                id="companyPhone"
+                type="tel"
+                value={settings.companyPhone}
+                onChange={(e) => setSettings({...settings, companyPhone: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Company Address
+              </label>
+              <input
+                id="companyAddress"
+                type="text"
+                value={settings.companyAddress}
+                onChange={(e) => setSettings({...settings, companyAddress: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+            </div>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Language
-            </label>
-            <select
-              value={settings.language}
-              onChange={(e) => setSettings({...settings, language: e.target.value})}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            >
-              <option value="en">English</option>
-              <option value="fil">Filipino</option>
-            </select>
+
+          <div className="border-t pt-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Regional Settings</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Timezone
+                </label>
+                <select
+                  id="timezone"
+                  value={settings.timezone}
+                  onChange={(e) => setSettings({...settings, timezone: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  <option value="Asia/Manila">Asia/Manila (UTC+8)</option>
+                  <option value="Asia/Tokyo">Asia/Tokyo (UTC+9)</option>
+                  <option value="UTC">UTC (UTC+0)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Language
+                </label>
+                <select
+                  id="language"
+                  value={settings.language}
+                  onChange={(e) => setSettings({...settings, language: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  <option value="en">English</option>
+                  <option value="fil">Filipino</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Currency
+                </label>
+                <select
+                  id="currency"
+                  value={settings.currency}
+                  onChange={(e) => setSettings({...settings, currency: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  <option value="PHP">Philippine Peso (₱)</option>
+                  <option value="USD">US Dollar ($)</option>
+                  <option value="EUR">Euro (€)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Date Format
+                </label>
+                <select
+                  id="dateFormat"
+                  value={settings.dateFormat}
+                  onChange={(e) => setSettings({...settings, dateFormat: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                </select>
+              </div>
+            </div>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Currency
-            </label>
-            <select
-              value={settings.currency}
-              onChange={(e) => setSettings({...settings, currency: e.target.value})}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            >
-              <option value="PHP">Philippine Peso (₱)</option>
-              <option value="USD">US Dollar ($)</option>
-              <option value="EUR">Euro (€)</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Date Format
-            </label>
-            <select
-              value={settings.dateFormat}
-              onChange={(e) => setSettings({...settings, dateFormat: e.target.value})}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            >
-              <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-              <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-              <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-            </select>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   )
 }

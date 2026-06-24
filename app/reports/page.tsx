@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Sidebar from '@/components/Sidebar'
 import UserDropdown from '@/components/UserDropdown'
-import { 
-  FileText, 
-  Download, 
-  Calendar, 
-  Filter, 
+import { toast } from 'sonner'
+import {
+  FileText,
+  Download,
+  Calendar,
+  Filter,
   Search,
   TrendingUp,
   TrendingDown,
@@ -35,62 +36,7 @@ interface Report {
   downloadUrl?: string
 }
 
-const reports: Report[] = [
-  {
-    id: '1',
-    name: 'Monthly Sales Report - January 2024',
-    type: 'sales',
-    description: 'Comprehensive sales analysis including revenue, orders, and customer metrics for January 2024',
-    generatedDate: '2024-02-01',
-    generatedBy: 'John Admin',
-    fileSize: '2.4 MB',
-    status: 'ready',
-    downloadUrl: '#'
-  },
-  {
-    id: '2',
-    name: 'Inventory Status Report',
-    type: 'inventory',
-    description: 'Current inventory levels, stock movements, and reorder recommendations',
-    generatedDate: '2024-01-28',
-    generatedBy: 'Sarah Manager',
-    fileSize: '1.8 MB',
-    status: 'ready',
-    downloadUrl: '#'
-  },
-  {
-    id: '3',
-    name: 'Customer Analytics Report',
-    type: 'customers',
-    description: 'Customer behavior analysis, retention rates, and segmentation insights',
-    generatedDate: '2024-01-25',
-    generatedBy: 'Mike Analyst',
-    fileSize: '3.1 MB',
-    status: 'ready',
-    downloadUrl: '#'
-  },
-  {
-    id: '4',
-    name: 'Q4 2023 Financial Summary',
-    type: 'financial',
-    description: 'Quarterly financial performance including profit margins and expense analysis',
-    generatedDate: '2024-01-05',
-    generatedBy: 'Finance Team',
-    fileSize: '4.2 MB',
-    status: 'ready',
-    downloadUrl: '#'
-  },
-  {
-    id: '5',
-    name: 'Product Performance Report',
-    type: 'sales',
-    description: 'Top performing products, category analysis, and sales trends',
-    generatedDate: '2024-01-30',
-    generatedBy: 'John Admin',
-    fileSize: '2.7 MB',
-    status: 'generating'
-  }
-]
+const reports: Report[] = []
 
 const reportTemplates = [
   {
@@ -163,6 +109,8 @@ export default function ReportsPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
+  const [reportData, setReportData] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
 
   const filteredReports = reports.filter(report => {
     const matchesSearch = report.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -180,8 +128,91 @@ export default function ReportsPage() {
     setShowGenerateModal(true)
   }
 
-  const handleDownloadReport = (reportId: string) => {
-    console.log(`Downloading report: ${reportId}`)
+  const handleDownloadReport = async (reportId: string, type: string) => {
+    try {
+      setLoading(true)
+      const period = '30days'
+      const res = await fetch(`/api/reports?type=${type}&period=${period}`)
+      if (!res.ok) throw new Error('Failed to fetch report data')
+      const data = await res.json()
+
+      // Generate CSV based on type
+      let csvContent = ''
+      let filename = ''
+
+      if (type === 'sales' && data.sales) {
+        csvContent = [
+          ['Date', 'Orders', 'Revenue', 'Customers'],
+          ...data.sales.map((row: any) => [
+            new Date(row.date).toLocaleDateString(),
+            row.orders,
+            Number(row.revenue).toFixed(2),
+            row.customers
+          ])
+        ].map(row => row.join(',')).join('\n')
+        filename = `sales_report_${new Date().toISOString().split('T')[0]}.csv`
+      } else if (type === 'inventory' && data.inventory) {
+        csvContent = [
+          ['Name', 'SKU', 'Category', 'Stock', 'Min Stock', 'Max Stock', 'Price', 'Status', 'Supplier', 'Location', 'Total Value'],
+          ...data.inventory.map((row: any) => [
+            row.name,
+            row.sku,
+            row.category,
+            row.stock,
+            row.min_stock,
+            row.max_stock,
+            Number(row.price).toFixed(2),
+            row.status,
+            row.supplier,
+            row.location,
+            Number(row.total_value).toFixed(2)
+          ])
+        ].map(row => row.join(',')).join('\n')
+        filename = `inventory_report_${new Date().toISOString().split('T')[0]}.csv`
+      } else if (type === 'customers' && data.customers) {
+        csvContent = [
+          ['Name', 'Email', 'Phone', 'Status', 'Total Orders', 'Total Spent', 'Join Date', 'Last Order Date'],
+          ...data.customers.map((row: any) => [
+            row.name,
+            row.email,
+            row.phone || '',
+            row.status,
+            row.total_orders,
+            Number(row.total_spent).toFixed(2),
+            row.join_date,
+            row.last_order_date || ''
+          ])
+        ].map(row => row.join(',')).join('\n')
+        filename = `customers_report_${new Date().toISOString().split('T')[0]}.csv`
+      } else if (type === 'financial' && data.financial) {
+        csvContent = [
+          ['Month', 'Total Orders', 'Total Revenue', 'Unique Customers', 'Avg Order Value'],
+          ...data.financial.map((row: any) => [
+            new Date(row.month).toLocaleDateString(),
+            row.total_orders,
+            Number(row.total_revenue).toFixed(2),
+            row.unique_customers,
+            Number(row.avg_order_value).toFixed(2)
+          ])
+        ].map(row => row.join(',')).join('\n')
+        filename = `financial_report_${new Date().toISOString().split('T')[0]}.csv`
+      }
+
+      if (csvContent) {
+        const blob = new Blob([csvContent], { type: 'text/csv' })
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        window.URL.revokeObjectURL(url)
+      }
+    } catch (error) {
+      console.error('Failed to download report:', error)
+      toast.error('Failed to download report')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleDeleteReport = (reportId: string) => {
@@ -402,7 +433,7 @@ export default function ReportsPage() {
                         <div className="flex items-center space-x-2">
                           {report.status === 'ready' && (
                             <button
-                              onClick={() => handleDownloadReport(report.id)}
+                              onClick={() => handleDownloadReport(report.id, report.type)}
                               className="text-primary-600 hover:text-primary-900"
                             >
                               <Download className="w-4 h-4" />
@@ -495,12 +526,16 @@ export default function ReportsPage() {
                   </button>
                   <button
                     onClick={() => {
-                      console.log(`Generating report: ${selectedTemplate}`)
+                      const template = reportTemplates.find(t => t.id === selectedTemplate)
+                      if (template) {
+                        handleDownloadReport(Date.now().toString(), template.type)
+                      }
                       setShowGenerateModal(false)
                     }}
-                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                    disabled={loading}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
                   >
-                    Generate Report
+                    {loading ? 'Generating...' : 'Generate Report'}
                   </button>
                 </div>
               </div>

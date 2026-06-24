@@ -1,14 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Sidebar from '@/components/Sidebar'
 import UserDropdown from '@/components/UserDropdown'
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  Users, 
-  ShoppingCart, 
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Users,
+  ShoppingCart,
   Package,
   Calendar,
   Download,
@@ -29,56 +29,12 @@ interface MetricCard {
   color: string
 }
 
-const metrics: MetricCard[] = [
-  {
-    title: 'Total Revenue',
-    value: '₱1,245,890',
-    change: '+12.5%',
-    trend: 'up',
-    icon: DollarSign,
-    color: 'bg-green-50 text-green-600'
-  },
-  {
-    title: 'Total Orders',
-    value: '3,456',
-    change: '+8.2%',
-    trend: 'up',
-    icon: ShoppingCart,
-    color: 'bg-blue-50 text-blue-600'
-  },
-  {
-    title: 'Active Customers',
-    value: '1,234',
-    change: '+15.3%',
-    trend: 'up',
-    icon: Users,
-    color: 'bg-purple-50 text-purple-600'
-  },
-  {
-    title: 'Conversion Rate',
-    value: '3.45%',
-    change: '-2.1%',
-    trend: 'down',
-    icon: Target,
-    color: 'bg-orange-50 text-orange-600'
-  }
-]
-
 interface SalesData {
   month: string
   revenue: number
   orders: number
   customers: number
 }
-
-const salesData: SalesData[] = [
-  { month: 'Jan', revenue: 89000, orders: 234, customers: 189 },
-  { month: 'Feb', revenue: 92000, orders: 256, customers: 201 },
-  { month: 'Mar', revenue: 88000, orders: 245, customers: 195 },
-  { month: 'Apr', revenue: 95000, orders: 278, customers: 223 },
-  { month: 'May', revenue: 102000, orders: 301, customers: 245 },
-  { month: 'Jun', revenue: 108000, orders: 323, customers: 267 }
-]
 
 interface TopProduct {
   name: string
@@ -87,17 +43,80 @@ interface TopProduct {
   percentage: number
 }
 
-const topProducts: TopProduct[] = [
-  { name: 'Wireless Bluetooth Headphones', sales: 156, revenue: 389844, percentage: 31.3 },
-  { name: 'Smart Watch Pro', sales: 89, revenue: 800911, percentage: 25.7 },
-  { name: 'USB-C Hub', sales: 234, revenue: 140166, percentage: 18.9 },
-  { name: 'Wireless Mouse', sales: 345, revenue: 137655, percentage: 15.2 },
-  { name: 'Laptop Backpack', sales: 67, revenue: 60233, percentage: 9.0 }
-]
+interface AnalyticsData {
+  salesData: SalesData[]
+  categoryData: { category: string; sales: number; revenue: number }[]
+  topProducts: TopProduct[]
+  stats: {
+    totalRevenue: number
+    totalOrders: number
+    totalCustomers: number
+    avgOrderValue: number
+  }
+}
 
 export default function AnalyticsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState('6months')
   const [selectedMetric, setSelectedMetric] = useState('revenue')
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadAnalyticsData()
+  }, [selectedPeriod])
+
+  const loadAnalyticsData = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch(`/api/analytics?period=${selectedPeriod}`)
+      if (!res.ok) throw new Error('Failed to fetch analytics data')
+      const data = await res.json()
+      setAnalyticsData(data)
+    } catch (error) {
+      console.error('Failed to load analytics:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const metrics: MetricCard[] = analyticsData ? [
+    {
+      title: 'Total Revenue',
+      value: `₱${analyticsData.stats.totalRevenue.toLocaleString()}`,
+      change: '+12.5%',
+      trend: 'up',
+      icon: DollarSign,
+      color: 'bg-green-50 text-green-600'
+    },
+    {
+      title: 'Total Orders',
+      value: analyticsData.stats.totalOrders.toLocaleString(),
+      change: '+8.2%',
+      trend: 'up',
+      icon: ShoppingCart,
+      color: 'bg-blue-50 text-blue-600'
+    },
+    {
+      title: 'Active Customers',
+      value: analyticsData.stats.totalCustomers.toLocaleString(),
+      change: '+15.3%',
+      trend: 'up',
+      icon: Users,
+      color: 'bg-purple-50 text-purple-600'
+    },
+    {
+      title: 'Avg Order Value',
+      value: `₱${analyticsData.stats.avgOrderValue.toFixed(2)}`,
+      change: '+5.1%',
+      trend: 'up',
+      icon: Target,
+      color: 'bg-orange-50 text-orange-600'
+    }
+  ] : []
+
+  const salesData = analyticsData?.salesData || []
+  const topProducts = analyticsData?.topProducts || []
+  const categoryData = analyticsData?.categoryData || []
 
   const totalRevenue = salesData.reduce((sum, item) => sum + item.revenue, 0)
   const totalOrders = salesData.reduce((sum, item) => sum + item.orders, 0)
@@ -244,42 +263,26 @@ export default function AnalyticsPage() {
             <div className="card p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Sales by Category</h3>
               <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-700">Electronics</span>
-                    <span className="text-sm text-gray-600">65%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-blue-600 h-2 rounded-full" style={{width: '65%'}}></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-700">Accessories</span>
-                    <span className="text-sm text-gray-600">25%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-green-600 h-2 rounded-full" style={{width: '25%'}}></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-700">Clothing</span>
-                    <span className="text-sm text-gray-600">7%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-purple-600 h-2 rounded-full" style={{width: '7%'}}></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-700">Home & Garden</span>
-                    <span className="text-sm text-gray-600">3%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-orange-600 h-2 rounded-full" style={{width: '3%'}}></div>
-                  </div>
-                </div>
+                {categoryData.length > 0 ? (
+                  categoryData.map((cat, index) => {
+                    const totalRevenue = categoryData.reduce((sum, c) => sum + c.revenue, 0)
+                    const percentage = totalRevenue > 0 ? (cat.revenue / totalRevenue * 100).toFixed(1) : '0'
+                    const colors = ['bg-blue-600', 'bg-green-600', 'bg-purple-600', 'bg-orange-600', 'bg-pink-600']
+                    return (
+                      <div key={cat.category}>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-sm font-medium text-gray-700">{cat.category}</span>
+                          <span className="text-sm text-gray-600">{percentage}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className={`${colors[index % colors.length]} h-2 rounded-full`} style={{width: `${percentage}%`}}></div>
+                        </div>
+                      </div>
+                    )
+                  })
+                ) : (
+                  <p className="text-sm text-gray-500">No category data available</p>
+                )}
               </div>
             </div>
           </div>
@@ -290,32 +293,42 @@ export default function AnalyticsPage() {
             <div className="lg:col-span-2 card p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Performing Products</h3>
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 text-sm font-medium text-gray-700">Product</th>
-                      <th className="text-right py-2 text-sm font-medium text-gray-700">Sales</th>
-                      <th className="text-right py-2 text-sm font-medium text-gray-700">Revenue</th>
-                      <th className="text-right py-2 text-sm font-medium text-gray-700">Share</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topProducts.map((product, index) => (
-                      <tr key={index} className="border-b">
-                        <td className="py-3">
-                          <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                        </td>
-                        <td className="text-right py-3 text-sm text-gray-900">{product.sales}</td>
-                        <td className="text-right py-3 text-sm font-medium text-gray-900">
-                          ₱{product.revenue.toLocaleString()}
-                        </td>
-                        <td className="text-right py-3">
-                          <span className="text-sm text-gray-600">{product.percentage}%</span>
-                        </td>
+                {loading ? (
+                  <p className="text-sm text-gray-500">Loading...</p>
+                ) : topProducts.length > 0 ? (
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2 text-sm font-medium text-gray-700">Product</th>
+                        <th className="text-right py-2 text-sm font-medium text-gray-700">Sales</th>
+                        <th className="text-right py-2 text-sm font-medium text-gray-700">Revenue</th>
+                        <th className="text-right py-2 text-sm font-medium text-gray-700">Share</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {topProducts.map((product, index) => {
+                        const totalRevenue = topProducts.reduce((sum, p) => sum + p.revenue, 0)
+                        const percentage = totalRevenue > 0 ? (product.revenue / totalRevenue * 100).toFixed(1) : '0'
+                        return (
+                          <tr key={index} className="border-b">
+                            <td className="py-3">
+                              <div className="text-sm font-medium text-gray-900">{product.name}</div>
+                            </td>
+                            <td className="text-right py-3 text-sm text-gray-900">{product.sales}</td>
+                            <td className="text-right py-3 text-sm font-medium text-gray-900">
+                              ₱{product.revenue.toLocaleString()}
+                            </td>
+                            <td className="text-right py-3">
+                              <span className="text-sm text-gray-600">{percentage}%</span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="text-sm text-gray-500">No product data available</p>
+                )}
               </div>
             </div>
 
@@ -323,22 +336,6 @@ export default function AnalyticsPage() {
             <div className="card p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Summary</h3>
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-green-100 rounded">
-                      <Zap className="w-4 h-4 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Best Day</p>
-                      <p className="text-xs text-gray-600">June 15, 2024</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-gray-900">₱45,678</p>
-                    <p className="text-xs text-gray-600">156 orders</p>
-                  </div>
-                </div>
-
                 <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-blue-100 rounded">
@@ -350,8 +347,24 @@ export default function AnalyticsPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-gray-900">₱{avgOrderValue.toFixed(2)}</p>
+                    <p className="text-sm font-bold text-gray-900">₱{analyticsData?.stats.avgOrderValue.toFixed(2) || '0.00'}</p>
                     <p className="text-xs text-green-600">+8.3%</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-green-100 rounded">
+                      <Zap className="w-4 h-4 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Total Revenue</p>
+                      <p className="text-xs text-gray-600">Current period</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-gray-900">₱{analyticsData?.stats.totalRevenue.toLocaleString() || '0'}</p>
+                    <p className="text-xs text-green-600">+12.5%</p>
                   </div>
                 </div>
 
@@ -361,13 +374,13 @@ export default function AnalyticsPage() {
                       <Target className="w-4 h-4 text-purple-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-900">Customer Retention</p>
-                      <p className="text-xs text-gray-600">30-day period</p>
+                      <p className="text-sm font-medium text-gray-900">Total Customers</p>
+                      <p className="text-xs text-gray-600">Current period</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-gray-900">78.5%</p>
-                    <p className="text-xs text-green-600">+3.2%</p>
+                    <p className="text-sm font-bold text-gray-900">{analyticsData?.stats.totalCustomers.toLocaleString() || '0'}</p>
+                    <p className="text-xs text-green-600">+15.3%</p>
                   </div>
                 </div>
 
@@ -377,13 +390,13 @@ export default function AnalyticsPage() {
                       <Package className="w-4 h-4 text-orange-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-900">Products Sold</p>
-                      <p className="text-xs text-gray-600">Total units</p>
+                      <p className="text-sm font-medium text-gray-900">Total Orders</p>
+                      <p className="text-xs text-gray-600">Current period</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-gray-900">12,456</p>
-                    <p className="text-xs text-green-600">+15.7%</p>
+                    <p className="text-sm font-bold text-gray-900">{analyticsData?.stats.totalOrders.toLocaleString() || '0'}</p>
+                    <p className="text-xs text-green-600">+8.2%</p>
                   </div>
                 </div>
               </div>

@@ -691,6 +691,76 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void, onCreate
     items: [] as OrderItem[]
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [customers, setCustomers] = useState<any[]>([])
+  const [loadingCustomers, setLoadingCustomers] = useState(false)
+  const [products, setProducts] = useState<any[]>([])
+  const [loadingProducts, setLoadingProducts] = useState(false)
+  const [showProductSearch, setShowProductSearch] = useState(false)
+  const [productSearchQuery, setProductSearchQuery] = useState('')
+
+  const loadCustomers = async () => {
+    try {
+      setLoadingCustomers(true)
+      const res = await fetch('/api/customers')
+      if (res.ok) {
+        const data = await res.json()
+        setCustomers(data)
+      }
+    } catch (error) {
+      console.error('Failed to load customers:', error)
+    } finally {
+      setLoadingCustomers(false)
+    }
+  }
+
+  const loadProducts = async () => {
+    try {
+      setLoadingProducts(true)
+      const res = await fetch('/api/products')
+      if (res.ok) {
+        const data = await res.json()
+        setProducts(data)
+      }
+    } catch (error) {
+      console.error('Failed to load products:', error)
+    } finally {
+      setLoadingProducts(false)
+    }
+  }
+
+  useEffect(() => {
+    loadCustomers()
+    loadProducts()
+  }, [])
+
+  const handleCustomerSelect = (customer: any) => {
+    setFormData({
+      ...formData,
+      customerName: customer.name,
+      customerEmail: customer.email,
+      customerPhone: customer.phone || '',
+      shippingAddress: customer.address || ''
+    })
+  }
+
+  const handleAddProduct = (product: any) => {
+    const newItem: OrderItem = {
+      id: Date.now().toString(),
+      productId: product.id,
+      productName: product.name,
+      quantity: 1,
+      unitPrice: Number(product.price),
+      totalPrice: Number(product.price)
+    }
+    setFormData({...formData, items: [...formData.items, newItem]})
+    setShowProductSearch(false)
+    setProductSearchQuery('')
+  }
+
+  const filteredProducts = products.filter(p =>
+    p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+    p.sku.toLowerCase().includes(productSearchQuery.toLowerCase())
+  )
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
@@ -725,6 +795,29 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void, onCreate
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Create New Order</h2>
         
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Customer</label>
+            {loadingCustomers ? (
+              <p className="text-sm text-gray-500">Loading customers...</p>
+            ) : (
+              <select
+                value={formData.customerEmail}
+                onChange={(e) => {
+                  const customer = customers.find(c => c.email === e.target.value)
+                  if (customer) handleCustomerSelect(customer)
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option value="">-- Select existing customer --</option>
+                {customers.map(customer => (
+                  <option key={customer.id} value={customer.email}>
+                    {customer.name} ({customer.email})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name *</label>
@@ -736,7 +829,7 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void, onCreate
               />
               {errors.customerName && <p className="text-red-600 text-sm mt-1">{errors.customerName}</p>}
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
               <input
@@ -801,22 +894,67 @@ function CreateOrderModal({ onClose, onCreate }: { onClose: () => void, onCreate
               <label className="block text-sm font-medium text-gray-700">Order Items</label>
               <button
                 type="button"
-                onClick={() => {
-                  const newItem: OrderItem = {
-                    id: Date.now().toString(),
-                    productId: '1',
-                    productName: 'Sample Product',
-                    quantity: 1,
-                    unitPrice: 1000,
-                    totalPrice: 1000
-                  }
-                  setFormData({...formData, items: [...formData.items, newItem]})
-                }}
+                onClick={() => setShowProductSearch(true)}
                 className="text-primary-600 hover:text-primary-800 text-sm"
               >
                 + Add Item
               </button>
             </div>
+
+            {/* Product Search Modal */}
+            {showProductSearch && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+                  <h3 className="text-lg font-semibold mb-4">Add Product</h3>
+                  <input
+                    type="text"
+                    placeholder="Search products by name or SKU..."
+                    value={productSearchQuery}
+                    onChange={(e) => setProductSearchQuery(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 mb-4"
+                    autoFocus
+                  />
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {loadingProducts ? (
+                      <p className="text-sm text-gray-500">Loading products...</p>
+                    ) : filteredProducts.length === 0 ? (
+                      <p className="text-sm text-gray-500">No products found</p>
+                    ) : (
+                      filteredProducts.map(product => (
+                        <div
+                          key={product.id}
+                          onClick={() => handleAddProduct(product)}
+                          className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
+                        >
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="font-medium">{product.name}</p>
+                              <p className="text-sm text-gray-500">SKU: {product.sku}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium">₱{Number(product.price).toFixed(2)}</p>
+                              <p className="text-sm text-gray-500">Stock: {product.stock}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex justify-end mt-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowProductSearch(false)
+                        setProductSearchQuery('')
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {formData.items.length === 0 ? (
               <div className="text-center py-4 bg-gray-50 rounded-lg">
                 <p className="text-gray-500">No items added yet</p>

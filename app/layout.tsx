@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import { AuthProvider } from '@/contexts/AuthContext'
 import AuthGuard from '@/components/AuthGuard'
 import { ThemeProvider } from '@/components/ThemeProvider'
+import { Toaster } from 'sonner'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -27,6 +28,7 @@ export default function RootLayout({
             </AuthGuard>
           </AuthProvider>
         </ThemeProvider>
+        <Toaster position="top-right" />
       </body>
     </html>
   )

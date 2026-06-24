@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server"
-import { Pool } from "pg"
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-})
+import { pool } from "@/lib/db"
 
 export async function PUT(
   req: Request,
@@ -59,6 +54,72 @@ export async function PUT(
 
     return NextResponse.json(
       { error: "Failed to update order", details: String(err) },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const body = await req.json()
+
+    console.log("PATCH BODY:", body)
+    console.log("ORDER ID:", params.id)
+
+    const { status } = body
+
+    const result = await pool.query(
+      `
+      UPDATE orders
+      SET
+        status = $1,
+        updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+      `,
+      [status, params.id]
+    )
+
+    console.log("PATCHED ROW:", result.rows[0])
+    return NextResponse.json(result.rows[0])
+  } catch (err) {
+    console.error("PATCH ERROR:", err)
+
+    return NextResponse.json(
+      { error: "Failed to update order status", details: String(err) },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    console.log("DELETE ORDER ID:", params.id)
+
+    // Delete order items first
+    await pool.query(
+      `DELETE FROM order_items WHERE order_id = $1`,
+      [params.id]
+    )
+
+    // Delete order
+    await pool.query(
+      `DELETE FROM orders WHERE id = $1`,
+      [params.id]
+    )
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("DELETE ERROR:", err)
+
+    return NextResponse.json(
+      { error: "Failed to delete order", details: String(err) },
       { status: 500 }
     )
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Sidebar from '@/components/Sidebar'
 import UserDropdown from '@/components/UserDropdown'
 import { 
@@ -32,76 +32,9 @@ interface Customer {
   totalSpent: number
   status: 'active' | 'inactive' | 'vip'
   lastOrderDate: string
-  avatar: string
+  createdAt: string
+  updatedAt: string
 }
-
-const customers: Customer[] = [
-  {
-    id: '1',
-    name: 'John Smith',
-    email: 'john.smith@email.com',
-    phone: '+1 (555) 123-4567',
-    address: '123 Main St, New York, NY 10001',
-    joinDate: '2023-01-15',
-    totalOrders: 12,
-    totalSpent: 3450.00,
-    status: 'vip',
-    lastOrderDate: '2024-01-18',
-    avatar: 'JS'
-  },
-  {
-    id: '2',
-    name: 'Sarah Johnson',
-    email: 'sarah.j@email.com',
-    phone: '+1 (555) 234-5678',
-    address: '456 Oak Ave, Los Angeles, CA 90001',
-    joinDate: '2023-03-22',
-    totalOrders: 8,
-    totalSpent: 1890.50,
-    status: 'active',
-    lastOrderDate: '2024-01-16',
-    avatar: 'SJ'
-  },
-  {
-    id: '3',
-    name: 'Mike Wilson',
-    email: 'mike.w@email.com',
-    phone: '+1 (555) 345-6789',
-    address: '789 Pine Rd, Chicago, IL 60601',
-    joinDate: '2023-06-10',
-    totalOrders: 5,
-    totalSpent: 920.75,
-    status: 'active',
-    lastOrderDate: '2024-01-17',
-    avatar: 'MW'
-  },
-  {
-    id: '4',
-    name: 'Emily Davis',
-    email: 'emily.d@email.com',
-    phone: '+1 (555) 456-7890',
-    address: '321 Elm St, Houston, TX 77001',
-    joinDate: '2022-11-05',
-    totalOrders: 15,
-    totalSpent: 5230.00,
-    status: 'vip',
-    lastOrderDate: '2024-01-18',
-    avatar: 'ED'
-  },
-  {
-    id: '5',
-    name: 'Robert Brown',
-    email: 'robert.b@email.com',
-    phone: '+1 (555) 567-8901',
-    address: '654 Maple Dr, Phoenix, AZ 85001',
-    joinDate: '2023-09-18',
-    totalOrders: 3,
-    totalSpent: 325.00,
-    status: 'inactive',
-    lastOrderDate: '2024-01-14',
-    avatar: 'RB'
-  }
-]
 
 const statusColors = {
   active: 'bg-green-100 text-green-800',
@@ -115,6 +48,51 @@ export default function CustomersPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [showCustomerDetails, setShowCustomerDetails] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [customerStats, setCustomerStats] = useState({
+    total: 0,
+    active: 0,
+    vip: 0,
+    avgOrderValue: 0
+  })
+
+  useEffect(() => {
+    loadCustomers()
+  }, [])
+
+  const loadCustomers = async () => {
+    try {
+      const res = await fetch('/api/customers')
+      if (!res.ok) {
+        console.error('API ERROR:', await res.text())
+        setCustomers([])
+        return
+      }
+      const data = await res.json()
+      setCustomers(data)
+      updateStats(data)
+    } catch (err) {
+      console.error('FETCH FAILED:', err)
+      setCustomers([])
+    }
+  }
+
+  const updateStats = (allCustomers: Customer[]) => {
+    const totalSpent = allCustomers.reduce((sum, c) => sum + Number(c.totalSpent || 0), 0)
+    const totalOrders = allCustomers.reduce((sum, c) => sum + Number(c.totalOrders || 0), 0)
+    setCustomerStats({
+      total: allCustomers.length,
+      active: allCustomers.filter(c => c.status === 'active').length,
+      vip: allCustomers.filter(c => c.status === 'vip').length,
+      avgOrderValue: totalOrders > 0 ? totalSpent / totalOrders : 0
+    })
+  }
+
+  const getAvatar = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  }
 
   const filteredCustomers = customers.filter(customer => {
     const matchesSearch = customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -132,7 +110,76 @@ export default function CustomersPage() {
   }
 
   const handleExportCustomers = () => {
-    console.log('Exporting customers to CSV/Excel')
+    const csvContent = [
+      ['Name', 'Email', 'Phone', 'Status', 'Total Orders', 'Total Spent', 'Join Date'],
+      ...customers.map(customer => [
+        customer.name,
+        customer.email,
+        customer.phone,
+        customer.status,
+        customer.totalOrders.toString(),
+        customer.totalSpent.toString(),
+        customer.joinDate
+      ])
+    ].map(row => row.join(',')).join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `customers_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    window.URL.revokeObjectURL(url)
+  }
+
+  const handleCreateCustomer = async (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customerData)
+      })
+      if (!res.ok) throw new Error('Failed to create customer')
+      await loadCustomers()
+      setShowCreateModal(false)
+    } catch (error) {
+      console.error('Failed to create customer:', error)
+    }
+  }
+
+  const handleEditCustomer = async (customerData: Partial<Customer>) => {
+    if (!selectedCustomer) return
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...customerData, id: selectedCustomer.id })
+      })
+      if (!res.ok) throw new Error('Failed to update customer')
+      await loadCustomers()
+      setShowEditModal(false)
+      setSelectedCustomer(null)
+    } catch (error) {
+      console.error('Failed to update customer:', error)
+    }
+  }
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    const confirmDelete = window.confirm('Are you sure you want to delete this customer?')
+    if (!confirmDelete) return
+    try {
+      const res = await fetch('/api/customers', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: customerId })
+      })
+      if (!res.ok) throw new Error('Failed to delete customer')
+      await loadCustomers()
+      setShowCustomerDetails(false)
+      setSelectedCustomer(null)
+    } catch (error) {
+      console.error('Failed to delete customer:', error)
+    }
   }
 
   return (
@@ -155,7 +202,10 @@ export default function CustomersPage() {
                 <Download className="w-4 h-4" />
                 <span>Export</span>
               </button>
-              <button className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+              <button 
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+              >
                 <Plus className="w-4 h-4" />
                 <span>Add Customer</span>
               </button>
@@ -172,8 +222,8 @@ export default function CustomersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Customers</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">156</p>
-                  <p className="text-xs text-green-600 mt-1">+18% from last month</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{customerStats.total}</p>
+                  <p className="text-xs text-green-600 mt-1">All customers</p>
                 </div>
                 <div className="p-3 rounded-lg bg-blue-50">
                   <User className="w-6 h-6 text-blue-600" />
@@ -185,8 +235,8 @@ export default function CustomersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Active Customers</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">124</p>
-                  <p className="text-xs text-green-600 mt-1">79.5% of total</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{customerStats.active}</p>
+                  <p className="text-xs text-green-600 mt-1">{customerStats.total > 0 ? ((customerStats.active / customerStats.total) * 100).toFixed(1) : 0}% of total</p>
                 </div>
                 <div className="p-3 rounded-lg bg-green-50">
                   <TrendingUp className="w-6 h-6 text-green-600" />
@@ -198,8 +248,8 @@ export default function CustomersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">VIP Customers</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">28</p>
-                  <p className="text-xs text-purple-600 mt-1">17.9% of total</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{customerStats.vip}</p>
+                  <p className="text-xs text-purple-600 mt-1">{customerStats.total > 0 ? ((customerStats.vip / customerStats.total) * 100).toFixed(1) : 0}% of total</p>
                 </div>
                 <div className="p-3 rounded-lg bg-purple-50">
                   <DollarSign className="w-6 h-6 text-purple-600" />
@@ -211,8 +261,8 @@ export default function CustomersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Avg. Order Value</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">₱289.50</p>
-                  <p className="text-xs text-green-600 mt-1">+5% from last month</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">₱{customerStats.avgOrderValue.toFixed(2)}</p>
+                  <p className="text-xs text-green-600 mt-1">Per customer</p>
                 </div>
                 <div className="p-3 rounded-lg bg-orange-50">
                   <DollarSign className="w-6 h-6 text-orange-600" />
@@ -288,7 +338,7 @@ export default function CustomersPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 font-medium">
-                            {customer.avatar}
+                            {getAvatar(customer.name)}
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-medium text-gray-900">{customer.name}</div>
@@ -310,8 +360,8 @@ export default function CustomersPage() {
                         <div className="text-sm text-gray-500">Last: {customer.lastOrderDate}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">₱{customer.totalSpent.toFixed(2)}</div>
-                        <div className="text-sm text-gray-500">Avg: ₱{(customer.totalSpent / customer.totalOrders).toFixed(2)}</div>
+                        <div className="text-sm font-medium text-gray-900">₱{Number(customer.totalSpent).toFixed(2)}</div>
+                        <div className="text-sm text-gray-500">Avg: ₱{(Number(customer.totalSpent) / Number(customer.totalOrders)).toFixed(2)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center space-x-2">
@@ -321,10 +371,19 @@ export default function CustomersPage() {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button className="text-gray-600 hover:text-gray-900">
+                          <button
+                            onClick={() => {
+                              setSelectedCustomer(customer)
+                              setShowEditModal(true)
+                            }}
+                            className="text-gray-600 hover:text-gray-900"
+                          >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button className="text-red-600 hover:text-red-900">
+                          <button
+                            onClick={() => handleDeleteCustomer(customer.id)}
+                            className="text-red-600 hover:text-red-900"
+                          >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -353,7 +412,7 @@ export default function CustomersPage() {
                 <div className="space-y-4">
                   <div className="flex items-center space-x-4">
                     <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 font-medium text-lg">
-                      {selectedCustomer.avatar}
+                      {getAvatar(selectedCustomer.name)}
                     </div>
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">{selectedCustomer.name}</h3>
@@ -408,8 +467,11 @@ export default function CustomersPage() {
                   </div>
 
                   <div className="flex justify-end space-x-3 pt-4 border-t">
-                    <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                      Send Email
+                    <button
+                      onClick={() => handleDeleteCustomer(selectedCustomer.id)}
+                      className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
+                    >
+                      Delete Customer
                     </button>
                     <button
                       onClick={() => setShowCustomerDetails(false)}
@@ -423,6 +485,255 @@ export default function CustomersPage() {
             </div>
           )}
         </main>
+      </div>
+
+      {/* Create Customer Modal */}
+      {showCreateModal && (
+        <CreateCustomerModal
+          onClose={() => setShowCreateModal(false)}
+          onCreate={handleCreateCustomer}
+        />
+      )}
+
+      {/* Edit Customer Modal */}
+      {showEditModal && selectedCustomer && (
+        <EditCustomerModal
+          customer={selectedCustomer}
+          onClose={() => {
+            setShowEditModal(false)
+            setSelectedCustomer(null)
+          }}
+          onUpdate={handleEditCustomer}
+        />
+      )}
+    </div>
+  )
+}
+
+// Create Customer Modal Component
+function CreateCustomerModal({ onClose, onCreate }: { onClose: () => void, onCreate: (customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => void }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    status: 'active' as 'active' | 'inactive' | 'vip',
+    joinDate: new Date().toISOString().split('T')[0],
+    lastOrderDate: '',
+    totalOrders: 0,
+    totalSpent: 0
+  })
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {}
+    if (!formData.name.trim()) newErrors.name = 'Name is required'
+    if (!formData.email.trim()) newErrors.email = 'Email is required'
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validateForm()) return
+    onCreate(formData)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Create New Customer</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+            />
+            {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
+            />
+            {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+            <input
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
+            <textarea
+              value={formData.address}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+            <select
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'inactive' | 'vip' })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="vip">VIP</option>
+            </select>
+          </div>
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+            >
+              Create Customer
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// Edit Customer Modal Component
+function EditCustomerModal({ customer, onClose, onUpdate }: { customer: Customer, onClose: () => void, onUpdate: (customer: Partial<Customer>) => void }) {
+  const [formData, setFormData] = useState({
+    name: customer.name,
+    email: customer.email,
+    phone: customer.phone,
+    address: customer.address,
+    status: customer.status,
+    totalOrders: customer.totalOrders,
+    totalSpent: customer.totalSpent
+  })
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {}
+    if (!formData.name.trim()) newErrors.name = 'Name is required'
+    if (!formData.email.trim()) newErrors.email = 'Email is required'
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validateForm()) return
+    onUpdate(formData)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Edit Customer</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+            />
+            {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${errors.email ? 'border-red-500' : 'border-gray-300'}`}
+            />
+            {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+            <input
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
+            <textarea
+              value={formData.address}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+            <select
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'inactive' | 'vip' })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="vip">VIP</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Total Orders</label>
+              <input
+                type="number"
+                value={formData.totalOrders}
+                onChange={(e) => setFormData({ ...formData, totalOrders: parseInt(e.target.value) || 0 })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Total Spent</label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.totalSpent}
+                onChange={(e) => setFormData({ ...formData, totalSpent: parseFloat(e.target.value) || 0 })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+            >
+              Update Customer
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )
