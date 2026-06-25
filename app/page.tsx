@@ -9,13 +9,11 @@ import {
   ShoppingCart, 
   Users, 
   TrendingUp, 
-  DollarSign, 
-  Eye, 
-  Calendar,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Star
+  DollarSign,
+  Star,
+  PlusCircle,
+  Pencil,
+  Trash2
 } from 'lucide-react'
 import { Order, Product } from '@/lib/type'
 import { useAuth } from '@/contexts/AuthContext'
@@ -57,6 +55,7 @@ export default function Dashboard() {
 
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
+  const [activities, setActivities] = useState([])
 
   const loadDashboardData = async () => {
     try {
@@ -66,7 +65,18 @@ export default function Dashboard() {
 
       if (!data.success) return;
 
-      setStats(data.stats);
+      setStats({
+        revenue: Number(data.stats.totalRevenue || 0),
+        totalOrders: Number(data.stats.totalOrders || 0),
+        activeProducts: Number(data.stats.activeProducts || 0),
+        totalCustomers: Number(data.stats.totalCustomers || 0),
+
+        pending: Number(data.stats.pending || 0),
+        processing: Number(data.stats.processing || 0),
+        shipped: Number(data.stats.shipped || 0),
+        delivered: Number(data.stats.delivered || 0),
+        cancelled: Number(data.stats.cancelled || 0),
+      })
       console.log("LOAD DASHBOARD:", data.stats)
 
       // Fake previous stats for growth %
@@ -87,6 +97,10 @@ export default function Dashboard() {
       }));
 
       setTopProducts(formattedTopProducts);
+
+      const activityResponse = await fetch("/api/activity-logs");
+      const activityData = await activityResponse.json();
+      setActivities(activityData);
 
     } catch (error) {
       console.error("Dashboard fetch error:", error);
@@ -172,6 +186,38 @@ export default function Dashboard() {
     loadDashboardData()
   }, [])
 
+  const getActivityIcon = (action: string) => {
+  switch (action) {
+    case "CREATE":
+      return <PlusCircle className="w-4 h-4 text-green-600" />;
+
+    case "UPDATE":
+      return <Pencil className="w-4 h-4 text-yellow-600" />;
+
+    case "DELETE":
+      return <Trash2 className="w-4 h-4 text-red-600" />;
+
+    default:
+      return <PlusCircle className="w-4 h-4 text-gray-600" />;
+  }
+  };
+
+  const getActivityDot = (action: string) => {
+    switch (action) {
+      case "CREATE":
+        return "bg-green-500";
+
+      case "UPDATE":
+        return "bg-yellow-500";
+
+      case "DELETE":
+        return "bg-red-500";
+
+      default:
+        return "bg-gray-500";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Sidebar />
@@ -231,7 +277,7 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-
+         
           {/* Orders */}
           <div className="card p-6">
             <div className="flex items-center justify-between">
@@ -312,6 +358,40 @@ export default function Dashboard() {
 
         </div>
 
+        <div className="card mb-6 overflow-y-auto">
+          <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Recent Activities
+            </h2>
+
+            <span className="text-xs px-2 py-1 rounded-full bg-gray-100">
+              {activities.length}
+            </span>
+          </div>
+
+          <div className="p-6 max-h-[350px] overflow-y-auto">
+
+            <div className="space-y-4">
+
+              {activities.map((activity: any) => (
+                <div
+                  key={activity.id}
+                  className="border-b border-gray-100 pb-3 last:border-b-0"
+                >
+                  <p className="text-sm font-medium text-gray-900">
+                    {activity.description}
+                  </p>
+
+                  <p className="text-xs text-gray-500 mt-1">
+                    {new Date(activity.created_at).toLocaleString()}
+                  </p>
+                </div>
+              ))}
+
+            </div>
+
+          </div>
+        </div>
           {/* Content Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Recent Orders */}
@@ -354,7 +434,7 @@ export default function Dashboard() {
             </div>
 
             {/* Top Products */}
-            <div className="lg:col-span-1">
+            <div className="lg:col-span-1 space-y-6">
               <div className="card">
                 <div className="p-6 border-b border-gray-200">
                   <h2 className="text-lg font-semibold text-gray-900">Top Products</h2>

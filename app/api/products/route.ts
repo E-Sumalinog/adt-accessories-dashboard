@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
+import { logActivity } from "@/lib/activityLogger";
 
 
 /*
@@ -114,6 +115,14 @@ body.imageUrl
 
 );
 
+await logActivity({
+  userName: "Admin",
+  action: "CREATE",
+  entity: "PRODUCT",
+  entityId: result.rows[0].id,
+  description: `Created product ${body.name}`,
+});
+
 
 
 return NextResponse.json(
@@ -203,6 +212,14 @@ body.id
 
 );
 
+await logActivity({
+  userName: "Admin",
+  action: "UPDATE",
+  entity: "PRODUCT",
+  entityId: body.id,
+  description: `Updated product ${body.name}`,
+});
+
 
 
 return NextResponse.json(
@@ -246,17 +263,22 @@ const body = await req.json();
 
 
 
-await pool.query(
-`
-DELETE FROM products
-
-WHERE id=$1
-`,
-[
-body.id
-]
-
+const existingProduct = await pool.query(
+  `
+  SELECT name
+  FROM products
+  WHERE id=$1
+  `,
+  [body.id]
 );
+
+await logActivity({
+  userName: "Admin",
+  action: "DELETE",
+  entity: "PRODUCT",
+  entityId: body.id,
+  description: `Deleted product ${existingProduct.rows[0]?.name || body.id}`,
+});
 
 
 

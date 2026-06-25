@@ -11,15 +11,12 @@ import {
   Eye, 
   Edit, 
   Trash2, 
-  Mail,
-  Phone,
-  MapPin,
-  Calendar,
   DollarSign,
   TrendingUp,
   Download,
   XCircle
 } from 'lucide-react'
+import { toast } from "sonner"
 
 interface Customer {
   id: string
@@ -132,54 +129,103 @@ export default function CustomersPage() {
     window.URL.revokeObjectURL(url)
   }
 
-  const handleCreateCustomer = async (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => {
-    try {
-      const res = await fetch('/api/customers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(customerData)
-      })
-      if (!res.ok) throw new Error('Failed to create customer')
-      await loadCustomers()
-      setShowCreateModal(false)
-    } catch (error) {
-      console.error('Failed to create customer:', error)
-    }
-  }
+  const handleCreateCustomer = async (
+    customerData: Omit<Customer, "id" | "createdAt" | "updatedAt">
+    ) => {
+      try {
+        const res = await fetch("/api/customers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(customerData),
+        });
 
-  const handleEditCustomer = async (customerData: Partial<Customer>) => {
-    if (!selectedCustomer) return
+        if (!res.ok) {
+          throw new Error("Failed to create customer");
+        }
+
+        await loadCustomers();
+
+        setShowCreateModal(false);
+
+        toast.success("Customer created successfully");
+      } catch (error) {
+        console.error("Failed to create customer:", error);
+
+        toast.error("Failed to create customer");
+      }
+  };
+
+  const handleEditCustomer = async (
+    customerData: Partial<Customer>
+  ) => {
+    if (!selectedCustomer) return;
+
     try {
-      const res = await fetch('/api/customers', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...customerData, id: selectedCustomer.id })
-      })
-      if (!res.ok) throw new Error('Failed to update customer')
-      await loadCustomers()
-      setShowEditModal(false)
-      setSelectedCustomer(null)
+      const res = await fetch("/api/customers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...customerData,
+          id: selectedCustomer.id,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to update customer");
+      }
+
+      await loadCustomers();
+
+      setShowEditModal(false);
+      setSelectedCustomer(null);
+
+      toast.success("Customer updated successfully");
     } catch (error) {
-      console.error('Failed to update customer:', error)
+      console.error("Failed to update customer:", error);
+
+      toast.error("Failed to update customer");
     }
-  }
+  };
 
   const handleDeleteCustomer = async (customerId: string) => {
-    const confirmDelete = window.confirm('Are you sure you want to delete this customer?')
-    if (!confirmDelete) return
-    try {
-      const res = await fetch('/api/customers', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: customerId })
-      })
-      if (!res.ok) throw new Error('Failed to delete customer')
-      await loadCustomers()
-      setShowCustomerDetails(false)
-      setSelectedCustomer(null)
-    } catch (error) {
-      console.error('Failed to delete customer:', error)
-    }
+    toast("Delete customer?", {
+      description: "This action cannot be undone.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            const res = await fetch("/api/customers", {
+              method: "DELETE",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                id: customerId,
+              }),
+            })
+
+            if (!res.ok) {
+              throw new Error("Failed to delete customer")
+            }
+
+            await loadCustomers()
+
+            setShowCustomerDetails(false)
+            setSelectedCustomer(null)
+
+            toast.success("Customer deleted successfully")
+          } catch (error) {
+            console.error("Failed to delete customer:", error)
+
+            toast.error("Failed to delete customer")
+          }
+        },
+      },
+      cancel: {
+        label: "Cancel",
+        onClick: () => {},
+      },
+    })
   }
 
   return (
@@ -456,7 +502,7 @@ export default function CustomersPage() {
                   <div className="bg-gray-50 rounded-lg p-4">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium text-gray-600">Total Spent</span>
-                      <span className="text-lg font-semibold text-gray-900">₱{selectedCustomer.totalSpent.toFixed(2)}</span>
+                      <span className="text-lg font-semibold text-gray-900">₱{Number(selectedCustomer.totalSpent || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center mt-2">
                       <span className="text-sm font-medium text-gray-600">Average Order Value</span>

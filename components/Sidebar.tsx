@@ -86,11 +86,38 @@ export default function Sidebar() {
   const pathname = usePathname()
   const { mode } = useTheme()
 
+  const [counts, setCounts] = useState({
+    orders: 0,
+    customers: 0,
+    products: 0,
+    inventory: 0,
+  })
+
   // Set active item based on current path
   useEffect(() => {
     const currentPath = pathname.replace('/', '') || 'home'
     setActiveItem(currentPath)
   }, [pathname])
+
+  useEffect(() => {
+    async function loadCounts() {
+      try {
+        const response = await fetch("/api/sidebar-counts")
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch counts")
+        }
+
+        const data = await response.json()
+
+        setCounts(data)
+      } catch (error) {
+        console.error("COUNT ERROR:", error)
+      }
+    }
+
+    loadCounts()
+  }, [])
 
   const handleNavigation = (itemId: string) => {
     setActiveItem(itemId)
@@ -153,11 +180,29 @@ export default function Sidebar() {
             >
               <Icon className="w-5 h-5 mr-3" />
               <span className="flex-1">{item.label}</span>
-              {item.badge && (
-                <span className="badge-primary">
-                  {item.badge}
-                </span>
-              )}
+              {item.id === "orders" && (
+                  <span className="badge-primary">
+                    {counts.orders}
+                  </span>
+                )}
+
+                {item.id === "customers" && (
+                  <span className="badge-primary">
+                    {counts.customers}
+                  </span>
+                )}
+
+                {item.id === "products" && (
+                  <span className="badge-primary">
+                    {counts.products}
+                  </span>
+                )}
+
+                {item.id === "inventory" && (
+                  <span className="badge-primary">
+                    {counts.inventory}
+                  </span>
+                )}
             </div>
           )
         })}
