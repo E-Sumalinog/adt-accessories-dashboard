@@ -1,116 +1,186 @@
-import { NextResponse } from "next/server"
-import { pool } from "@/lib/db"
+import { NextRequest, NextResponse } from "next/server";
+import { pool } from "@/lib/db";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url)
-    const period = searchParams.get('period') || '6months'
+    const period =
+      req.nextUrl.searchParams.get("period") ?? "6months";
 
-    let dateCondition = ''
-    const now = new Date()
-    
+    let interval = "6 months";
+
     switch (period) {
-      case '7days':
-        dateCondition = "AND o.created_at >= NOW() - INTERVAL '7 days'"
-        break
-      case '30days':
-        dateCondition = "AND o.created_at >= NOW() - INTERVAL '30 days'"
-        break
-      case '3months':
-        dateCondition = "AND o.created_at >= NOW() - INTERVAL '3 months'"
-        break
-      case '6months':
-        dateCondition = "AND o.created_at >= NOW() - INTERVAL '6 months'"
-        break
-      case '1year':
-        dateCondition = "AND o.created_at >= NOW() - INTERVAL '1 year'"
-        break
-      default:
-        dateCondition = "AND o.created_at >= NOW() - INTERVAL '6 months'"
+      case "7days":
+        interval = "7 days";
+        break;
+
+      case "30days":
+        interval = "30 days";
+        break;
+
+      case "3months":
+        interval = "3 months";
+        break;
+
+      case "6months":
+        interval = "6 months";
+        break;
+
+      case "1year":
+        interval = "1 year";
+        break;
     }
 
-    // Revenue by month
-    const revenueQuery = await pool.query(`
-      SELECT 
-        DATE_TRUNC('month', o.created_at) as month,
-        COALESCE(SUM(o.total_amount), 0) as revenue,
-        COUNT(*) as orders,
-        COUNT(DISTINCT o.customer_email) as customers
-      FROM orders o
-      WHERE o.status != 'cancelled' ${dateCondition}
-      GROUP BY DATE_TRUNC('month', o.created_at)
-      ORDER BY month ASC
-    `)
+    //-------------------------------------
+    // Monthly Revenue
+    //-------------------------------------
 
-    // Sales by category
-    const categoryQuery = await pool.query(`
-      SELECT 
-        p.category,
-        COUNT(*) as sales_count,
-        COALESCE(SUM(oi.total_price), 0) as revenue
+    const revenueResult = await pool.query(
+      `
+      SELECT
+          DATE_TRUNC('month', order_date) AS month,
+          SUM(total_amount)::numeric AS revenue,
+          COUNT(*)::int AS orders,
+          COUNT(DISTINCT customer_email)::int AS customers
+      FROM orders
+      WHERE status <> 'cancelled'
+      AND order_date >= CURRENT_DATE - INTERVAL '${interval}'
+      GROUP BY DATE_TRUNC('month', order_date)
+      ORDER BY month;
+`
+    );
+
+    //-------------------------------------
+    // Category Sales
+    //-------------------------------------
+
+    const categoryResult = await pool.query(
+      `
+      SELECT
+          p.category,
+          SUM(oi.quantity)::int AS sales,
+          SUM(oi.total_price)::numeric AS revenue
       FROM order_items oi
-      JOIN products p ON p.id = oi.product_id
-      JOIN orders o ON o.id = oi.order_id
-      WHERE o.status != 'cancelled' ${dateCondition}
+      JOIN products p
+      ON p.id = oi.product_id
+
+      JOIN orders o
+      ON o.id = oi.order_id
+
+      WHERE o.status <> 'cancelled'
+      AND o.order_date >= CURRENT_DATE - INTERVAL '${interval}'
+
       GROUP BY p.category
-      ORDER BY revenue DESC
-    `)
 
-    // Top products
-    const topProductsQuery = await pool.query(`
-      SELECT 
-        p.name,
-        SUM(oi.quantity) as total_sales,
-        COALESCE(SUM(oi.total_price), 0) as total_revenue
+      ORDER BY revenue DESC;
+`
+    );
+
+    //-------------------------------------
+    // Top Products
+    //-------------------------------------
+
+    const topProductsResult = await pool.query(
+      `
+      SELECT
+          p.name,
+          SUM(oi.quantity)::int AS sales,
+          SUM(oi.total_price)::numeric AS revenue
       FROM order_items oi
-      JOIN products p ON p.id = oi.product_id
-      JOIN orders o ON o.id = oi.order_id
-      WHERE o.status != 'cancelled' ${dateCondition}
-      GROUP BY p.id, p.name
-      ORDER BY total_revenue DESC
-      LIMIT 10
-    `)
+      JOIN products p
+      ON p.id = oi.product_id
 
-    // Overall stats
-    const statsQuery = await pool.query(`
-      SELECT 
-        COALESCE(SUM(o.total_amount), 0) as total_revenue,
-        COUNT(*) as total_orders,
-        COUNT(DISTINCT o.customer_email) as total_customers,
-        COALESCE(SUM(o.total_amount) / NULLIF(COUNT(*), 0), 0) as avg_order_value
-      FROM orders o
-      WHERE o.status != 'cancelled' ${dateCondition}
-    `)
+      JOIN orders o
+      ON o.id = oi.order_id
+
+      WHERE o.status <> 'cancelled'
+      AND o.order_date >= CURRENT_DATE - INTERVAL '${interval}'
+
+      GROUP BY p.id,p.name
+
+      ORDER BY revenue DESC
+
+      LIMIT 10;
+`
+    );
+
+    //-------------------------------------
+    // Dashboard Stats
+    //-------------------------------------
+
+    const statsResult = await pool.query(
+      `
+      SELECT
+          COALESCE(SUM(total_amount),0)::numeric AS revenue,
+          COUNT(*)::int AS orders,
+          COUNT(DISTINCT customer_email)::int AS customers,
+          COALESCE(AVG(total_amount),0)::numeric AS average
+      FROM orders
+      WHERE status <> 'cancelled'
+      AND order_date >= CURRENT_DATE - INTERVAL '${interval}';
+`
+    );
+
+    //-------------------------------------
+    // Calculate Percentage
+    //-------------------------------------
+
+    const totalTopRevenue = topProductsResult.rows.reduce(
+      (sum, item) => sum + Number(item.revenue),
+      0
+    );
+
+    //-------------------------------------
+    // Response
+    //-------------------------------------
 
     return NextResponse.json({
-      salesData: revenueQuery.rows.map(row => ({
-        month: new Date(row.month).toLocaleString('default', { month: 'short' }),
+      stats: {
+        totalRevenue: Number(statsResult.rows[0].revenue),
+        totalOrders: Number(statsResult.rows[0].orders),
+        totalCustomers: Number(statsResult.rows[0].customers),
+        avgOrderValue: Number(statsResult.rows[0].average),
+      },
+
+      salesData: revenueResult.rows.map((row) => ({
+        month: new Date(row.month).toLocaleString("en-US", {
+          month: "short",
+        }),
         revenue: Number(row.revenue),
         orders: Number(row.orders),
-        customers: Number(row.customers)
+        customers: Number(row.customers),
       })),
-      categoryData: categoryQuery.rows.map(row => ({
+
+      categoryData: categoryResult.rows.map((row) => ({
         category: row.category,
-        sales: Number(row.sales_count),
-        revenue: Number(row.revenue)
+        sales: Number(row.sales),
+        revenue: Number(row.revenue),
       })),
-      topProducts: topProductsQuery.rows.map(row => ({
+
+      topProducts: topProductsResult.rows.map((row) => ({
         name: row.name,
-        sales: Number(row.total_sales),
-        revenue: Number(row.total_revenue)
+        sales: Number(row.sales),
+        revenue: Number(row.revenue),
+        percentage:
+          totalTopRevenue === 0
+            ? 0
+            : Number(
+                (
+                  (Number(row.revenue) / totalTopRevenue) *
+                  100
+                ).toFixed(1)
+              ),
       })),
-      stats: {
-        totalRevenue: Number(statsQuery.rows[0]?.total_revenue || 0),
-        totalOrders: Number(statsQuery.rows[0]?.total_orders || 0),
-        totalCustomers: Number(statsQuery.rows[0]?.total_customers || 0),
-        avgOrderValue: Number(statsQuery.rows[0]?.avg_order_value || 0)
-      }
-    })
-  } catch (error) {
-    console.error("ANALYTICS API ERROR:", error)
+    });
+  } catch (err) {
+    console.error(err);
+
     return NextResponse.json(
-      { error: "Failed to fetch analytics data" },
-      { status: 500 }
-    )
+      {
+        error: "Failed to load analytics",
+      },
+      {
+        status: 500,
+      }
+    );
   }
 }
